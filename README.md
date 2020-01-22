@@ -1,4 +1,4 @@
-# TimedExecuteV2
+# TimedExecuteV2 (Hellseek/RFC1920)
 Extension of the TimedExecute plugin - more detail to come
 
 It's a very simple plugin that can execute many commands every (X) seconds!
