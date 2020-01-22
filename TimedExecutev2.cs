@@ -1,11 +1,12 @@
 using System;
+using System.Linq;
+using System.Globalization;
 using System.Collections.Generic;
 using Oxide.Core.Libraries.Covalence;
-using System.Linq;
 
 namespace Oxide.Plugins
 {
-    [Info("Timed Execute v2", "PaiN/Hellseek", "0.7.9", ResourceId = 1937)]
+    [Info("Timed Execute v2", "PaiN/Hellseek/RFC1920", "0.8.0", ResourceId = 1937)]
     [Description("Execute commands every (x) seconds.")]
     class TimedExecutev2 : CovalencePlugin
     {
@@ -16,7 +17,8 @@ namespace Oxide.Plugins
             RealTime,
             InGameTime,
             Repeater,
-            TimerOnce
+            TimerOnce,
+            TimerWeekday
         };
 
         class TimerType
@@ -39,6 +41,7 @@ namespace Oxide.Plugins
             public static Timer Real;
             public static Timer Repeat;
             public static Timer Once;
+            public static Timer Weekday;
 
             public static void ResetTimer(Types type, string timerName = "")
             {
@@ -55,6 +58,9 @@ namespace Oxide.Plugins
                         break;
                     case Types.TimerOnce:
                         RunTimer(Types.TimerOnce, timerName);
+                        break;
+                    case Types.TimerWeekday:
+                        RunTimer(Types.TimerWeekday);
                         break;
                 }
             }
@@ -74,6 +80,9 @@ namespace Oxide.Plugins
                         break;
                     case Types.TimerOnce:
                         Destroy(Types.TimerOnce, timerName);
+                        break;
+                    case Types.TimerWeekday:
+                        Destroy(Types.TimerWeekday);
                         break;
                 }
             }
@@ -193,7 +202,58 @@ namespace Oxide.Plugins
                             }
                         }
                         break;
+                    case Types.TimerWeekday:
+                        var weekdayTimers = Plugin.Config["TimerWeekday"] as Dictionary<string, object>;
+
+                        if (weekdayTimers == null)
+                            return;
+
+                        Plugin.Puts("The Weekday timer has started");
+
+                        foreach(var cmd in weekdayTimers)
+                        {
+                            var week = Plugin.timer.Repeat(1, 0, () =>
+                            {
+                                List<string> elements = cmd.Key.ToString().Split(' ').ToList();
+                                DateTime today = DateTime.Now;
+
+                                if(today.ToString("HH:mm:ss") == elements[0] && CheckWeek(today, elements[1], elements[2]))
+                                {
+                                    Plugin.covalence.Server.Command(cmd.Value.ToString());
+                                    Plugin.Puts(string.Format("ran CMD: {0}", cmd.Value));
+                                }
+                            });
+                            AllTimers.Add(week, new TimerType(type, string.Empty));
+                        }
+                        break;
                 }
+            }
+
+            private static bool CheckWeek(DateTime today, string weekday, string wNum)
+            {
+                if(wNum.ToLower() == "all") return true;
+                int day = ((int)Enum.Parse(typeof(DayOfWeek), weekday));
+                int weekNum = Int32.Parse(wNum);
+
+                if(weekNum <= 0 || weekNum > 5) return false;
+
+                DateTime firstDayOfMonth = new DateTime(today.Year, today.Month, 1);
+
+                // Subtract first day of the month with the required day of the week
+                var daysneeded = (int)day - (int)firstDayOfMonth.DayOfWeek;
+                //if it is less than zero we need to get the next week day (add 7 days)
+                if(daysneeded < 0) daysneeded = daysneeded + 7;
+                // DayOfWeek is zero index based; multiply by the weekNum to get the day
+                var resultedDay = (daysneeded + 1) + (7 * (weekNum - 1));
+
+                // Skipped into next month?
+                if(resultedDay > (firstDayOfMonth.AddMonths(1) - firstDayOfMonth).Days) return false;
+
+                if(today.Day == resultedDay)
+                {
+                    return true;
+                }
+                return false;
             }
 
             public static void Destroy(Types type, string timerName = "")
@@ -253,6 +313,10 @@ namespace Oxide.Plugins
                 var enableOnceTimer = Plugin.Config["EnableTimerOnce"] as bool?;
                 if (enableOnceTimer != null && (bool)enableOnceTimer)
                     RunTimer(Types.TimerOnce);
+
+                var enableWeekdayTimer = Plugin.Config["EnableTimerWeekday"] as bool?;
+                if (enableWeekdayTimer != null && (bool)enableWeekdayTimer)
+                    RunTimer(Types.TimerWeekday);
             }
         }
         #endregion
@@ -285,6 +349,7 @@ namespace Oxide.Plugins
             var realtimecmds = new Dictionary<string, object>();
             var ingamecmds = new Dictionary<string, object>();
             var chaincmds = new HashSet<TimerOnce>();
+            var datetimecmds = new Dictionary<string, object>();
 
             repeatcmds.Add("command1 arg", 300);
             repeatcmds.Add("command2 'msg'", 300);
@@ -322,6 +387,9 @@ namespace Oxide.Plugins
             ingamecmds.Add("15:00", "command 2");
             if (Config["InGameTime-Timer"] == null)
                 Config["InGameTime-Timer"] = ingamecmds;
+
+            datetimecmds.Add("17:00:00 Thursday 1", "say Happy Wipe Day!");
+            if(Config["TimerWeekday"] == null) Config["TimerWeekday"] = datetimecmds;
         }
 
         [Command("reset.timeronce", "resettimeronce")]
